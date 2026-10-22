@@ -1,0 +1,73 @@
+services:
+  # ============================================================
+  # 1. PostgreSQL Database Service
+  # ============================================================
+  db:
+    image: postgres:16-alpine
+    container_name: predicverse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-predicverse_db_secret_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-predicverse}
+    volumes:
+      - predicverse_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-predicverse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - predicverse-net
+
+  # ============================================================
+  # 2. Express Backend API Service
+  # ============================================================
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: predicverse-server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-predicverse_db_secret_pass_2026}@db:5432/${POSTGRES_DB:-predicverse}?schema=public
+      DIRECT_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-predicverse_db_secret_pass_2026}@db:5432/${POSTGRES_DB:-predicverse}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-c87bf15694c03ba8651a2d1e0892095cf0d05daeb5cbebf0dfb4618774e1773010b91d4e7d23d8c253818610534c0eec6b9be20d7dae6ad1c8be40901eefb5da}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      NODE_ENV: production
+      PORT: 3001
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost,http://localhost:80,http://localhost:3000}
+    ports:
+      - "3001:3001"
+    networks:
+      - predicverse-net
+
+  # ============================================================
+  # 3. React 18 + Vite Frontend & Nginx Reverse Proxy
+  # ============================================================
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: predicverse-client
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "${CLIENT_PORT:-80}:80"
+    networks:
+      - predicverse-net
+
+volumes:
+  predicverse_pgdata:
+    driver: local
+
+networks:
+  predicverse-net:
+    driver: bridge

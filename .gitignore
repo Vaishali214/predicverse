@@ -3,6 +3,7 @@ dist/
 .env
 .env.local
 .env.production
+.env.docker
 .env.production.local
 .env.*.local
 *.log
